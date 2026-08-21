@@ -1,0 +1,41 @@
+name: CrashLogViewer
+options:
+  bundleIdPrefix: com.crashviewer
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_STYLE: Manual
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_VERSION: "5.0"
+    ENABLE_BITCODE: "NO"
+    PRODUCT_BUNDLE_IDENTIFIER: com.crashviewer.app
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+
+targets:
+  CrashLogViewer:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: App
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/CrashLogViewer.entitlements
+        PRODUCT_NAME: CrashLogViewer
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: App/Bridging-Header.h
+        OTHER_LDFLAGS:
+          - "-Xlinker"
+          - "-no_deduplicate"
+    info:
+      path: App/Info.plist
