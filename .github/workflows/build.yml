@@ -15,10 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
+      - name: Select newest Xcode
         run: |
-          ls /Applications | grep -i Xcode || true
-          sudo xcode-select -switch /Applications/Xcode_16.app || sudo xcode-select -switch /Applications/Xcode.app
+          echo "Available Xcodes:"
+          ls -d /Applications/Xcode*.app
+          # pick the highest-versioned Xcode to avoid the Xcode 16.0 actool simulator-runtime bug
+          NEWEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -n1)
+          echo "Selecting $NEWEST"
+          sudo xcode-select -switch "$NEWEST/Contents/Developer"
           xcodebuild -version
 
       - name: Install XcodeGen
