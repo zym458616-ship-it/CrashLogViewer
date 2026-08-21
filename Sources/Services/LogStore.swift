@@ -57,12 +57,12 @@ final class LogStore: ObservableObject {
         // 目录可访问性诊断
         var ok: [String] = []
         var bad: [String] = []
-        var counts: [String: Int] = [:]
+        var dirCounts: [String: Int] = [:]
         let fm = FileManager.default
         for dir in LogScanner.logDirectories {
             if fm.fileExists(atPath: dir), let items = try? fm.contentsOfDirectory(atPath: dir) {
                 ok.append(dir)
-                counts[dir] = items.count
+                dirCounts[dir] = items.count
             } else {
                 bad.append(dir)
             }
@@ -72,7 +72,7 @@ final class LogStore: ObservableObject {
         self.logs = scannedLogs
         self.accessibleDirectories = ok
         self.inaccessibleDirectories = bad
-        self.directoryFileCounts = counts
+        self.directoryFileCounts = dirCounts
         self.scanProgress = ""
         self.isScanning = false
     }
