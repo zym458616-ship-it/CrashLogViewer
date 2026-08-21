@@ -11,6 +11,8 @@ final class LogStore: ObservableObject {
     @Published var scanProgress = ""
     @Published var accessibleDirectories: [String] = []
     @Published var inaccessibleDirectories: [String] = []
+    /// 每个目录实际发现的文件数（诊断用）
+    @Published var directoryFileCounts: [String: Int] = [:]
 
     /// 进程名 → App 的映射，用于把日志归属到 App
     private var processIndex: [String: InstalledApp] = [:]
@@ -55,10 +57,12 @@ final class LogStore: ObservableObject {
         // 目录可访问性诊断
         var ok: [String] = []
         var bad: [String] = []
+        var counts: [String: Int] = [:]
         let fm = FileManager.default
         for dir in LogScanner.logDirectories {
-            if fm.fileExists(atPath: dir), (try? fm.contentsOfDirectory(atPath: dir)) != nil {
+            if fm.fileExists(atPath: dir), let items = try? fm.contentsOfDirectory(atPath: dir) {
                 ok.append(dir)
+                counts[dir] = items.count
             } else {
                 bad.append(dir)
             }
@@ -68,22 +72,49 @@ final class LogStore: ObservableObject {
         self.logs = scannedLogs
         self.accessibleDirectories = ok
         self.inaccessibleDirectories = bad
+        self.directoryFileCounts = counts
         self.scanProgress = ""
         self.isScanning = false
     }
 
-    /// 将日志匹配到 App
+    /// 将日志匹配到 App（多级匹配，尽量不漏）
     func matchApp(for log: LogEntry) -> InstalledApp? {
+        // 1) BundleID 精确
         if let bid = log.bundleIdentifier, let app = bundleIndex[bid] { return app }
+        // 2) 进程名精确（可执行名 / 显示名）
         if let app = processIndex[log.processName] { return app }
+        // 3) BundleID 前缀（部分崩溃日志只带主 App 的 bundleID 而进程是扩展）
+        if let bid = log.bundleIdentifier {
+            for app in apps where !app.bundleIdentifier.isEmpty {
+                if bid == app.bundleIdentifier { return app }
+                if bid.hasPrefix(app.bundleIdentifier + ".") { return app }
+            }
+        }
+        // 4) 进程名忽略大小写 + 去掉尾部数字/空格
+        let p = normalize(log.processName)
+        if !p.isEmpty {
+            for app in apps {
+                if normalize(app.executableName) == p || normalize(app.name) == p { return app }
+            }
+        }
         return nil
     }
 
-    /// 某个 App 的全部日志
+    private func normalize(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
+    /// 某个 App 的全部日志（与 matchApp 保持一致的宽松匹配）
     func logs(for app: InstalledApp) -> [LogEntry] {
-        logs.filter { log in
-            if let bid = log.bundleIdentifier, bid == app.bundleIdentifier { return true }
-            return log.processName == app.executableName || log.processName == app.name
+        let exe = normalize(app.executableName)
+        let nm = normalize(app.name)
+        return logs.filter { log in
+            if let bid = log.bundleIdentifier {
+                if bid == app.bundleIdentifier { return true }
+                if bid.hasPrefix(app.bundleIdentifier + ".") { return true }
+            }
+            let p = normalize(log.processName)
+            return p == exe || p == nm
         }
     }
 

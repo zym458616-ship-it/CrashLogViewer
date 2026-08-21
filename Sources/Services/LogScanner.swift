@@ -11,17 +11,15 @@ final class LogScanner {
         "/var/mobile/Library/Logs/CrashReporter",
         "/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs",
         "/var/mobile/Library/Logs/CrashReporter/Retired",
+        "/var/mobile/Library/Logs/CrashReporter/WiFi",
         "/var/mobile/Library/Logs/DiagnosticReports",
+        "/private/var/mobile/Library/Logs/CrashReporter",
+        "/var/mobile/Library/Logs/AppleSupport",
         "/Library/Logs/CrashReporter",
+        "/Library/Logs/DiagnosticReports",
         "/var/root/Library/Logs/CrashReporter",
         "/var/logs/CrashReporter",
         "/var/mobile/Library/Logs",
-    ]
-
-    /// 崩溃日志文件后缀
-    private let crashExtensions: Set<String> = [
-        "ips", "crash", "beta", "panic", "wakeups_resource",
-        "cpu_resource", "jetsam", "spin", "hang", "diag", "log", "stacks", "synced"
     ]
 
     /// 扫描全部日志文件
@@ -42,7 +40,7 @@ final class LogScanner {
     private func collect(in dir: String, fm: FileManager,
                          into entries: inout [LogEntry],
                          visited: inout Set<String>, depth: Int) {
-        if depth > 2 { return }              // 限制递归深度
+        if depth > 4 { return }              // 限制递归深度
         if visited.contains(dir) { return }
         visited.insert(dir)
 
@@ -59,7 +57,11 @@ final class LogScanner {
             }
 
             let ext = (item as NSString).pathExtension.lowercased()
-            guard crashExtensions.contains(ext) else { continue }
+            // 在已知崩溃目录内，接受所有文件（不再局限于固定后缀），
+            // 避免漏掉命名特殊的巨魔/越狱崩溃文件；仅跳过明显的非日志文件。
+            let skip: Set<String> = ["plist", "db", "sqlite", "sqlite-wal", "sqlite-shm", "png", "jpg", "jpeg"]
+            if skip.contains(ext) { continue }
+            if item.hasPrefix(".") { continue }   // 跳过隐藏文件
 
             autoreleasepool {
                 if let entry = parse(path: fullPath, fileName: item, fm: fm) {
@@ -129,12 +131,13 @@ final class LogScanner {
         }
         defer { try? handle.close() }
 
-        let data = handle.readData(ofLength: 8192)   // 头部 8KB 足够解析概要
+        let data = handle.readData(ofLength: 16384)  // 读多一点以覆盖 payload 内的 bundleID
         guard let text = String(data: data, encoding: .utf8) else {
             return (nil, nil, "二进制内容", nil)
         }
 
-        // 新版 .ips 为 JSON（首行 header + 第二行 payload）
+        // 新版 .ips 为多行 JSON：第 1 行 header（app_name/bug_type/...），
+        // 第 2 行 payload（含 bundleID/procName/exception 等）
         if let firstBrace = text.firstIndex(of: "{") {
             let jsonPart = String(text[firstBrace...])
             if let parsed = parseIPSHeader(jsonPart) {
@@ -146,28 +149,57 @@ final class LogScanner {
         return parsePlainText(text: text)
     }
 
-    /// 解析 .ips 首行 JSON header
+    /// 解析 .ips 的 JSON（第 1 行 header + 第 2 行 payload 合并取值）
     private func parseIPSHeader(_ jsonPart: String)
         -> (String?, String?, String, Date?)? {
 
-        // 只取第一行完整 JSON
-        let firstLine = jsonPart.split(whereSeparator: { $0 == "\n" }).first.map(String.init) ?? jsonPart
-        guard let d = firstLine.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else {
+        // .ips 通常是两段独立 JSON：header 在第 1 行，payload 在其后
+        let lines = jsonPart.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        guard let firstLine = lines.first,
+              let d = firstLine.data(using: .utf8),
+              let header = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else {
             return nil
         }
 
-        let proc = obj["app_name"] as? String ?? obj["name"] as? String ?? obj["process"] as? String
-        let bundleID = obj["bundleID"] as? String ?? obj["bug_type"] as? String
-        var summaryParts: [String] = []
-        if let bugType = obj["bug_type"] as? String {
-            summaryParts.append("类型 \(bugType)")
+        // 尝试解析 payload（第 2 段起，可能多行）——bundleID/procName 常在这里
+        var payload: [String: Any] = [:]
+        if lines.count > 1 {
+            let rest = lines.dropFirst().joined(separator: "\n")
+            if let firstBrace = rest.firstIndex(of: "{"),
+               let pd = String(rest[firstBrace...]).data(using: .utf8),
+               let p = try? JSONSerialization.jsonObject(with: pd) as? [String: Any] {
+                payload = p
+            }
         }
-        if let ver = obj["app_version"] as? String { summaryParts.append("v\(ver)") }
-        if let os = obj["os_version"] as? String { summaryParts.append(os) }
+
+        func pick(_ keys: [String]) -> String? {
+            for k in keys {
+                if let v = header[k] as? String, !v.isEmpty { return v }
+                if let v = payload[k] as? String, !v.isEmpty { return v }
+            }
+            return nil
+        }
+
+        let proc = pick(["app_name", "procName", "name", "process"])
+        // 注意：bug_type 是崩溃类型编号（如 "309"），不是 BundleID，绝不能当作 bundleID
+        let bundleID = pick(["bundleID", "bundleId", "coalitionName"])
+
+        var summaryParts: [String] = []
+        if let bugType = header["bug_type"] as? String { summaryParts.append("类型 \(bugType)") }
+        // 异常/终止原因（来自 payload）
+        if let ex = payload["exception"] as? [String: Any] {
+            if let t = ex["type"] as? String { summaryParts.append(t) }
+            if let sig = ex["signal"] as? String { summaryParts.append(sig) }
+        }
+        if let term = payload["termination"] as? [String: Any],
+           let reason = term["namespace"] as? String {
+            summaryParts.append(reason)
+        }
+        if let ver = pick(["app_version"]) { summaryParts.append("v\(ver)") }
+        if let os = pick(["os_version"]) { summaryParts.append(os) }
 
         var date: Date? = nil
-        if let ts = obj["timestamp"] as? String {
+        if let ts = (header["timestamp"] as? String) ?? (payload["captureTime"] as? String) {
             let f = ISO8601DateFormatter()
             f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             date = f.date(from: ts) ?? {

@@ -18,15 +18,20 @@ struct DiagnosticsView: View {
 
                 Section {
                     ForEach(store.accessibleDirectories, id: \.self) { dir in
-                        Label(dir, systemImage: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.footnote.monospaced())
+                        HStack {
+                            Label(dir, systemImage: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.footnote.monospaced())
+                            Spacer()
+                            Text("\(store.directoryFileCounts[dir] ?? 0)")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
                     }
                     if store.accessibleDirectories.isEmpty {
                         Text("无可访问日志目录").foregroundColor(.secondary)
                     }
                 } header: {
-                    Text("可访问目录 (\(store.accessibleDirectories.count))")
+                    Text("可访问目录 (\(store.accessibleDirectories.count)) · 右侧为文件数")
                 }
 
                 Section {
