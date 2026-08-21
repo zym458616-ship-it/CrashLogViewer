@@ -41,22 +41,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_ENTITLEMENTS="" \
             ONLY_ACTIVE_ARCH=NO \
-            clean build | xcpretty || true
-          # fallback without xcpretty if it failed silently
-          if [ ! -d "build/Build/Products/Release-iphoneos/CrashLogViewer.app" ]; then
-            xcodebuild \
-              -project CrashLogViewer.xcodeproj \
-              -scheme CrashLogViewer \
-              -configuration Release \
-              -sdk iphoneos \
-              -derivedDataPath build \
-              CODE_SIGN_IDENTITY="" \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGN_ENTITLEMENTS="" \
-              ONLY_ACTIVE_ARCH=NO \
-              clean build
-          fi
+            clean build 2>&1 | tee /tmp/xcodebuild.log
+          echo "=== actool / asset errors (if any) ==="
+          grep -iE "error:|actool|\.xcassets|icon" /tmp/xcodebuild.log | tail -40 || true
 
       - name: Locate .app
         id: locate
