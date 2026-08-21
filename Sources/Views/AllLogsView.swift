@@ -50,30 +50,34 @@ struct AllLogsView: View {
             .searchable(text: $searchText, prompt: "搜索进程 / 概要 / Bundle ID")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if selectMode {
-                        Button("完成") { selectMode = false; selected.removeAll() }
-                    } else {
-                        Menu {
-                            Button {
-                                selectMode = true
-                            } label: { Label("多选导出", systemImage: "checkmark.circle") }
-                            Button {
-                                exportAll()
-                            } label: { Label("导出全部日志", systemImage: "square.and.arrow.up.on.square") }
-                            Button {
-                                Task { await store.refresh() }
-                            } label: { Label("重新扫描", systemImage: "arrow.clockwise") }
-                        } label: { Image(systemName: "ellipsis.circle") }
+                    Group {
+                        if selectMode {
+                            Button("完成") { selectMode = false; selected.removeAll() }
+                        } else {
+                            Menu {
+                                Button {
+                                    selectMode = true
+                                } label: { Label("多选导出", systemImage: "checkmark.circle") }
+                                Button {
+                                    exportAll()
+                                } label: { Label("导出全部日志", systemImage: "square.and.arrow.up.on.square") }
+                                Button {
+                                    Task { await store.refresh() }
+                                } label: { Label("重新扫描", systemImage: "arrow.clockwise") }
+                            } label: { Image(systemName: "ellipsis.circle") }
+                        }
                     }
                 }
-                if selectMode {
-                    ToolbarItem(placement: .bottomBar) {
-                        Button {
-                            exportSelected()
-                        } label: {
-                            Label("导出所选 (\(selected.count))", systemImage: "square.and.arrow.up")
+                ToolbarItem(placement: .bottomBar) {
+                    Group {
+                        if selectMode {
+                            Button {
+                                exportSelected()
+                            } label: {
+                                Label("导出所选 (\(selected.count))", systemImage: "square.and.arrow.up")
+                            }
+                            .disabled(selected.isEmpty)
                         }
-                        .disabled(selected.isEmpty)
                     }
                 }
             }

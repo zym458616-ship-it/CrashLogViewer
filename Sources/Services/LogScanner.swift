@@ -178,7 +178,7 @@ final class LogScanner {
         }
 
         let summary = summaryParts.isEmpty ? "崩溃报告" : summaryParts.joined(separator: " · ")
-        return (proc, bundleID as? String, summary, date)
+        return (proc, bundleID, summary, date)
     }
 
     /// 解析旧版纯文本崩溃日志头
