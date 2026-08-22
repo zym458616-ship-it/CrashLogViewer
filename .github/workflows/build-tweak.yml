@@ -13,43 +13,44 @@ permissions:
 
 jobs:
   build-tweak:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Select newest Xcode
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential fakeroot git perl curl zip unzip
+          NEWEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -n1)
+          sudo xcode-select -switch "$NEWEST/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install ldid + dpkg
+        run: |
+          brew install ldid dpkg make || true
 
       - name: Set up Theos
         run: |
           export THEOS=$HOME/theos
           git clone --recursive https://github.com/theos/theos.git $THEOS
-          # 安装 iOS SDK（arm64）
-          curl -sL https://github.com/theos/sdks/archive/master.tar.gz | tar xzf - -C /tmp
-          mv /tmp/sdks-master/*.sdk $THEOS/sdks/ || true
-          # 安装 ldid（Theos 提供的预编译二进制）
-          curl -sL "https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64" -o /usr/local/bin/ldid 2>/dev/null \
-            || sudo curl -sL "https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64" -o /usr/local/bin/ldid
-          sudo chmod +x /usr/local/bin/ldid || true
-          ldid 2>/dev/null | head -1 || echo "ldid installed (or theos bundles its own)"
+          # macOS 上 Theos 直接用 Xcode 的 clang，无需额外交叉工具链
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          echo "$THEOS/bin" >> "$GITHUB_PATH"
 
-      - name: Build package
+      - name: Build package (rootful + rootless)
         run: |
           export THEOS=$HOME/theos
           cd tweak
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootful || true
-          echo "=== rootless attempt ==="
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || true
-          echo "=== find debs ==="
-          find . -name "*.deb" -o -name "packages" -type d
-          find $THEOS -name "*.deb" 2>/dev/null || true
+          echo "===== rootful ====="
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootful 2>&1 | tail -40 || true
+          echo "===== rootless ====="
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tail -40 || true
+          echo "===== collect debs ====="
           mkdir -p out
-          find . packages -name "*.deb" 2>/dev/null -exec cp {} out/ \; || true
+          find . -name "*.deb" -exec cp {} out/ \; || true
           ls -lh out || true
+          test -n "$(ls out/*.deb 2>/dev/null)" || { echo 'NO DEB PRODUCED'; exit 1; }
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
@@ -66,7 +67,8 @@ jobs:
           name: CrashCatcher Tweak v1.0.0 (build ${{ github.run_number }})
           body: |
             CrashCatcher 越狱插件 (.deb)。注入所有 App，主动捕获崩溃并写详细日志。
-            安装后配合 CrashLogViewer 使用。需 rootful/rootless 与越狱环境匹配。
+            含 rootful 与 rootless 两种包，按你的越狱环境选择安装。
+            安装后配合 CrashLogViewer 使用。
           files: tweak/out/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
