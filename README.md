@@ -32,6 +32,19 @@ App 依赖以下私有 entitlements 访问其它 App 的日志目录：
 
 这些权限仅在越狱 / TrollStore 环境下有效，普通签名安装无法读取其它 App 的沙盒日志。
 
+## CrashCatcher 越狱插件（主动捕获崩溃）
+
+很多闪退（尤其巨魔 App 因签名/权限校验失败被系统在启动阶段 kill、或 watchdog 超时）**不会产生系统 .ips 崩溃日志**，"分析与改进"里也看不到。为此仓库附带一个 `tweak/` 越狱插件 **CrashCatcher**：
+
+- 通过 MobileSubstrate/ElleKit 注入到所有链接 UIKit 的 App。
+- 在进程内安装信号处理器（SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE/SIGTRAP）、`NSSetUncaughtExceptionHandler`。
+- 崩溃时主动把详细报告（进程、BundleID、版本、系统、设备、信号/异常、backtrace）写入该 App 自身容器的 `Documents/.CrashCatcher/*.crashlog`。
+- CrashLogViewer 会自动扫描每个 App 数据容器内的 `.CrashCatcher` 目录并按容器路径归属到对应 App。
+
+构建：push 到 `main`（改动 `tweak/**` 时）或手动触发 `Build CrashCatcher Tweak` workflow，在 Ubuntu 上用 Theos 编译出 `.deb`，随 release 发布。用 Sileo/Zebra 安装后 `uicache` 或重启即可。
+
+> 仅适用于**已越狱**设备（需要 MobileSubstrate 全局注入）。纯 TrollStore 无越狱环境无法全局注入其它 App，此时只能依赖系统 .ips 日志。
+
 ## 技术栈
 
 - SwiftUI（iOS 15+）

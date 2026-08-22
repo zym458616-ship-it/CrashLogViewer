@@ -1,0 +1,9 @@
+Package: com.crashviewer.crashcatcher
+Name: CrashCatcher
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: 捕获所有 App 的致命信号/未捕获异常/终止，主动生成详细崩溃日志，供 CrashLogViewer 读取。
+Maintainer: zym458616-ship-it
+Author: zym458616-ship-it
+Section: Tweaks
+Depends: mobilesubstrate

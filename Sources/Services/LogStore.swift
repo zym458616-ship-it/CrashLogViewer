@@ -27,8 +27,13 @@ final class LogStore: ObservableObject {
         }.value
 
         scanProgress = "正在扫描崩溃日志…"
+        // 收集各 App 数据容器内 CrashCatcher tweak 写入的日志目录
+        let extraDirs: [String] = scannedApps.compactMap { app in
+            guard let dc = app.dataContainerPath else { return nil }
+            return (dc as NSString).appendingPathComponent("Documents/.CrashCatcher")
+        }
         let scannedLogs = await Task.detached(priority: .userInitiated) {
-            LogScanner.shared.scanAllLogs()
+            LogScanner.shared.scanAllLogs(extraDirs: extraDirs)
         }.value
 
         // 建立索引
@@ -97,6 +102,11 @@ final class LogStore: ObservableObject {
                 if normalize(app.executableName) == p || normalize(app.name) == p { return app }
             }
         }
+        // 5) 路径归属：CrashCatcher 日志位于 App 数据容器内，直接按容器路径匹配
+        for app in apps {
+            if let dc = app.dataContainerPath, !dc.isEmpty,
+               log.filePath.hasPrefix(dc) { return app }
+        }
         return nil
     }
 
@@ -113,6 +123,7 @@ final class LogStore: ObservableObject {
                 if bid == app.bundleIdentifier { return true }
                 if bid.hasPrefix(app.bundleIdentifier + ".") { return true }
             }
+            if let dc = app.dataContainerPath, !dc.isEmpty, log.filePath.hasPrefix(dc) { return true }
             let p = normalize(log.processName)
             return p == exe || p == nm
         }

@@ -1,0 +1,67 @@
+name: Build CrashCatcher Tweak
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tweak/**'
+      - '.github/workflows/build-tweak.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-tweak:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential fakeroot git perl curl ldid
+
+      - name: Set up Theos
+        run: |
+          export THEOS=$HOME/theos
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          # 安装 iOS SDK（arm64）
+          curl -sL https://github.com/theos/sdks/archive/master.tar.gz | tar xzf - -C /tmp
+          mv /tmp/sdks-master/*.sdk $THEOS/sdks/ || true
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+
+      - name: Build package
+        run: |
+          export THEOS=$HOME/theos
+          cd tweak
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootful || true
+          echo "=== rootless attempt ==="
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || true
+          echo "=== find debs ==="
+          find . -name "*.deb" -o -name "packages" -type d
+          find $THEOS -name "*.deb" 2>/dev/null || true
+          mkdir -p out
+          find . packages -name "*.deb" 2>/dev/null -exec cp {} out/ \; || true
+          ls -lh out || true
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrashCatcher-tweak-deb
+          path: tweak/out/*.deb
+          if-no-files-found: warn
+
+      - name: Attach deb to release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tweak-v1.0.0-build${{ github.run_number }}
+          name: CrashCatcher Tweak v1.0.0 (build ${{ github.run_number }})
+          body: |
+            CrashCatcher 越狱插件 (.deb)。注入所有 App，主动捕获崩溃并写详细日志。
+            安装后配合 CrashLogViewer 使用。需 rootful/rootless 与越狱环境匹配。
+          files: tweak/out/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

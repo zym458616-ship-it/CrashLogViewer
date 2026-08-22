@@ -23,12 +23,13 @@ final class LogScanner {
     ]
 
     /// 扫描全部日志文件
-    func scanAllLogs() -> [LogEntry] {
+    /// 扫描全部日志文件。extraDirs 为额外目录（如各 App 容器内的 .CrashCatcher）
+    func scanAllLogs(extraDirs: [String] = []) -> [LogEntry] {
         var entries: [LogEntry] = []
         let fm = FileManager.default
         var visited = Set<String>()
 
-        for dir in Self.logDirectories {
+        for dir in (Self.logDirectories + extraDirs) {
             guard fm.fileExists(atPath: dir) else { continue }
             collect(in: dir, fm: fm, into: &entries, visited: &visited, depth: 0)
         }
@@ -103,6 +104,7 @@ final class LogScanner {
         if lower.contains("spin") { return .spin }
         if lower.contains("hang") { return .hang }
         if lower.contains(".synced") || lower.contains("analytics") { return .analytics }
+        if lower.hasSuffix(".crashlog") { return .crash }   // CrashCatcher tweak 产物
         if lower.hasSuffix(".ips") || lower.hasSuffix(".crash") || lower.hasSuffix(".beta") || lower.hasSuffix(".panic") { return .crash }
         if lower.hasSuffix(".log") || lower.hasSuffix(".stacks") { return .log }
         return .unknown
@@ -213,15 +215,19 @@ final class LogScanner {
         return (proc, bundleID, summary, date)
     }
 
-    /// 解析旧版纯文本崩溃日志头
+    /// 解析旧版纯文本崩溃日志头 + CrashCatcher tweak 自定义格式
     private func parsePlainText(text: String) -> (String?, String?, String, Date?) {
         var proc: String?
         var bundleID: String?
         var exception: String?
         var termination: String?
+        var ccSignal: String?
+        var ccExcName: String?
+        var ccExcReason: String?
 
-        for raw in text.split(separator: "\n").prefix(40) {
+        for raw in text.split(separator: "\n").prefix(60) {
             let line = String(raw)
+            // 标准 Apple 崩溃日志字段
             if proc == nil, line.hasPrefix("Process:") {
                 proc = value(after: "Process:", in: line)
             } else if bundleID == nil, line.hasPrefix("Identifier:") {
@@ -231,11 +237,26 @@ final class LogScanner {
             } else if termination == nil, line.hasPrefix("Termination Reason:") {
                 termination = value(after: "Termination Reason:", in: line)
             }
+            // CrashCatcher tweak 中文字段
+            else if proc == nil, line.hasPrefix("进程:") {
+                proc = value(after: "进程:", in: line)
+            } else if bundleID == nil, line.hasPrefix("BundleID:") {
+                bundleID = value(after: "BundleID:", in: line)
+            } else if ccSignal == nil, line.hasPrefix("信号:") {
+                ccSignal = value(after: "信号:", in: line)
+            } else if ccExcName == nil, line.hasPrefix("异常名称:") {
+                ccExcName = value(after: "异常名称:", in: line)
+            } else if ccExcReason == nil, line.hasPrefix("异常原因:") {
+                ccExcReason = value(after: "异常原因:", in: line)
+            }
         }
 
         var parts: [String] = []
         if let e = exception { parts.append(e) }
         if let t = termination { parts.append(t) }
+        if let s = ccSignal { parts.append(s) }
+        if let n = ccExcName { parts.append(n) }
+        if let r = ccExcReason { parts.append(r) }
         let summary = parts.isEmpty ? "崩溃报告" : parts.joined(separator: " · ")
         return (proc, bundleID, summary, nil)
     }

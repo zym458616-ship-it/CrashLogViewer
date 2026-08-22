@@ -68,8 +68,10 @@ struct DiagnosticsView: View {
                 }
 
                 Section {
-                    Text("崩溃日志查看器 v1.0.0\n适用于越狱 / TrollStore 环境\n未签名构建，需自行签名或以巨魔安装。")
+                    Text("崩溃日志查看器 v1.0.1\n适用于越狱 / TrollStore 环境\n未签名构建，需自行签名或以巨魔安装。")
                         .font(.caption).foregroundColor(.secondary)
+                } footer: {
+                    Text("提示：并非所有闪退都会生成系统 .ips 日志（尤其巨魔 App 因签名/权限被启动时 kill）。安装配套的 CrashCatcher 越狱插件后，本 App 会额外读取各 App 容器内 Documents/.CrashCatcher/ 下由插件主动捕获的崩溃日志。")
                 }
             }
             .listStyle(.insetGrouped)
