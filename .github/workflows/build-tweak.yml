@@ -25,45 +25,36 @@ jobs:
           xcodebuild -version
 
       - name: Install ldid + dpkg
-        run: |
-          brew install ldid dpkg make || true
+        run: brew install ldid dpkg make xz || true
 
-      - name: Set up Theos
+      - name: Set up roothide Theos
         run: |
           export THEOS=$HOME/theos
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          # macOS 上 Theos 直接用 Xcode 的 clang，无需额外交叉工具链
+          # roothide 隐根越狱专属 theos fork（内置 roothide 打包方案）
+          git clone --recursive https://github.com/roothide/theos.git $THEOS
+          # iOS SDK
+          curl -sL https://github.com/theos/sdks/archive/master.tar.gz | tar xzf - -C /tmp
+          mv /tmp/sdks-master/*.sdk $THEOS/sdks/ || true
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
           echo "$THEOS/bin" >> "$GITHUB_PATH"
 
-      - name: Build package (rootful + rootless)
+      - name: Build roothide package
         run: |
           export THEOS=$HOME/theos
           cd tweak
           mkdir -p out
-          echo "===== rootful (default scheme) ====="
+          echo "===== roothide scheme ====="
           make clean || true
-          make package FINALPACKAGE=1 2>&1 | tail -40 || true
-          for d in packages/*.deb; do
-            [ -f "$d" ] || continue
-            cp "$d" "out/$(basename "$d" .deb)_rootful.deb"
-          done
-          rm -f packages/*.deb
-          echo "===== rootless ====="
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tail -40 || true
-          for d in packages/*.deb; do
-            [ -f "$d" ] || continue
-            cp "$d" "out/$(basename "$d" .deb)_rootless.deb"
-          done
+          make package FINALPACKAGE=1 2>&1 | tail -60 || true
           echo "===== collected debs ====="
+          find . -name "*.deb" -exec cp {} out/ \; || true
           ls -lh out || true
           test -n "$(ls out/*.deb 2>/dev/null)" || { echo 'NO DEB PRODUCED'; exit 1; }
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CrashCatcher-tweak-deb
+          name: CrashCatcher-roothide-deb
           path: tweak/out/*.deb
           if-no-files-found: warn
 
@@ -71,12 +62,12 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: tweak-v1.0.0-build${{ github.run_number }}
-          name: CrashCatcher Tweak v1.0.0 (build ${{ github.run_number }})
+          tag_name: tweak-roothide-build${{ github.run_number }}
+          name: CrashCatcher (roothide) v1.0.0 build ${{ github.run_number }}
           body: |
-            CrashCatcher 越狱插件 (.deb)。注入所有 App，主动捕获崩溃并写详细日志。
-            含 rootful 与 rootless 两种包，按你的越狱环境选择安装。
-            安装后配合 CrashLogViewer 使用。
+            CrashCatcher 隐根越狱(roothide)专属插件 (.deb)。
+            注入所有 App，主动捕获崩溃并写详细日志，供 CrashLogViewer 读取。
+            用 Sileo/Zebra 安装后重启或注销即可。
           files: tweak/out/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
