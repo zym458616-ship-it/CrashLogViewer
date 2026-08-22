@@ -40,15 +40,21 @@ jobs:
         run: |
           export THEOS=$HOME/theos
           cd tweak
+          mkdir -p out
           echo "===== rootful ====="
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootful 2>&1 | tail -40 || true
+          find . -name "*.deb" -exec cp {} out/ \; || true
           echo "===== rootless ====="
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tail -40 || true
-          echo "===== collect debs ====="
-          mkdir -p out
-          find . -name "*.deb" -exec cp {} out/ \; || true
+          # rename rootless deb to avoid clobbering rootful
+          for d in packages/*.deb ./*.deb; do
+            [ -f "$d" ] || continue
+            base=$(basename "$d" .deb)
+            cp "$d" "out/${base}_rootless.deb"
+          done
+          echo "===== collected debs ====="
           ls -lh out || true
           test -n "$(ls out/*.deb 2>/dev/null)" || { echo 'NO DEB PRODUCED'; exit 1; }
 
