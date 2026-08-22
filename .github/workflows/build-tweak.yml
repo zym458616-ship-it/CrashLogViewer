@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential fakeroot git perl curl ldid
+          sudo apt-get install -y build-essential fakeroot git perl curl zip unzip
 
       - name: Set up Theos
         run: |
@@ -30,6 +30,11 @@ jobs:
           # 安装 iOS SDK（arm64）
           curl -sL https://github.com/theos/sdks/archive/master.tar.gz | tar xzf - -C /tmp
           mv /tmp/sdks-master/*.sdk $THEOS/sdks/ || true
+          # 安装 ldid（Theos 提供的预编译二进制）
+          curl -sL "https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64" -o /usr/local/bin/ldid 2>/dev/null \
+            || sudo curl -sL "https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64" -o /usr/local/bin/ldid
+          sudo chmod +x /usr/local/bin/ldid || true
+          ldid 2>/dev/null | head -1 || echo "ldid installed (or theos bundles its own)"
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
 
       - name: Build package
