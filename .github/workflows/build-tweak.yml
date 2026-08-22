@@ -41,18 +41,20 @@ jobs:
           export THEOS=$HOME/theos
           cd tweak
           mkdir -p out
-          echo "===== rootful ====="
+          echo "===== rootful (default scheme) ====="
           make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootful 2>&1 | tail -40 || true
-          find . -name "*.deb" -exec cp {} out/ \; || true
+          make package FINALPACKAGE=1 2>&1 | tail -40 || true
+          for d in packages/*.deb; do
+            [ -f "$d" ] || continue
+            cp "$d" "out/$(basename "$d" .deb)_rootful.deb"
+          done
+          rm -f packages/*.deb
           echo "===== rootless ====="
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tail -40 || true
-          # rename rootless deb to avoid clobbering rootful
-          for d in packages/*.deb ./*.deb; do
+          for d in packages/*.deb; do
             [ -f "$d" ] || continue
-            base=$(basename "$d" .deb)
-            cp "$d" "out/${base}_rootless.deb"
+            cp "$d" "out/$(basename "$d" .deb)_rootless.deb"
           done
           echo "===== collected debs ====="
           ls -lh out || true
